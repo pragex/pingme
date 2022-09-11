@@ -129,5 +129,5 @@ dmypy.json
 .pyre/
 
 #Default config file
-/config.py
+/pingme.ini
 
