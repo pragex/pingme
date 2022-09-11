@@ -1,10 +1,12 @@
 #!/usr/bin/python3
 import signal
+from re import match
 import time
+import socket
 import smtplib
 from datetime import datetime
 from email.message import EmailMessage
-from multiping import multi_ping, MultiPing, MultiPingError
+from multiping import multi_ping, MultiPingError
 
 port = 587  # For starttls
 
@@ -31,6 +33,22 @@ class GracefulKiller:
         self.killNow = True
 
 
+def getIP(fqdn):
+    """
+    This method returns the first IP address string
+    that responds as the given domain name
+    """
+
+    if match(r'^((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\.(?!$)|$)){4}$', fqdn):
+        return fqdn
+
+    try:
+        data = socket.gethostbyname(fqdn)
+        return repr(data)
+    except socket.error:
+        return False
+
+
 def sendMessage(toEmail, message, headAdd=""):
     msg = EmailMessage()
     msg['Subject'] = 'OVH - Surveillance des Hôtes' + headAdd
@@ -50,7 +68,7 @@ def runPing(killer, addrs, retries=3):
     if retries < 1:
         retries = 1
 
-    responses = noResponses = list()
+    responses = noResponses = []
 
     while retries > 0:
         retries -= 1
@@ -95,7 +113,7 @@ def runPing(killer, addrs, retries=3):
                 print("[{:%Y-%m-%d %H:%M:%S}] Host down : ".format(datetime.now())
                       + ", ".join(downHosts.keys()), flush=True)
 
-    downTime = dict()
+    downTime = {}
     for host in responses:
         if host in downHosts:
             downTime[host] = int(time.time() - downHosts[host])
@@ -135,7 +153,6 @@ if __name__ == '__main__':
     print("Exit", flush=True)
 
 
-
 # import socket
 
 # sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -149,7 +166,7 @@ if __name__ == '__main__':
 
 # import socket
 # from contextlib import closing
-   
+
 # def check_socket(host, port):
 #     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
 #         if sock.connect_ex((host, port)) == 0:
