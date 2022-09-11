@@ -128,6 +128,9 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-#Default config file
+# Default config file
 /pingme.ini
+
+# DS_Store
+.DS_Store
 
