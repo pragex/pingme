@@ -19,6 +19,51 @@ version = 1.08
 downHosts = {}
 
 
+class Unavail:
+    hosts = {}
+
+    def __init__(self):
+        pass
+
+    def pop(self):
+        if item['host'] in unavail:
+            popUnavail(unavail)
+
+        if unavail[item['host']] != -1:
+            downtime = int(time.time() - unavail[item['host']])
+
+            if options['email'] is not False:
+                kwargs = {
+                    'subject': "ceci est un test",
+                    'body': "1 ceci est un test"
+                }
+
+                kwargs.update(options['email'])
+
+                sendEmail(**kwargs)
+
+        del unavail[item['host']]
+
+    def push(self):
+        if item['host'] not in unavail:
+            pushUnavail(unavail)
+
+            if first:
+                unavail[item['host']] = -1  # is not open
+            else:
+                unavail[item['host']] = time.time()
+                if options['email'] is not False:
+                    kwargs = {
+                        'subject': "ceci est un test",
+                        'body': "2 ceci est un test"
+                    }
+
+                    kwargs.update(options['email'])
+
+                    sendEmail(**kwargs)
+
+
+
 class GracefulKiller:
     killNow = False
 
@@ -30,39 +75,59 @@ class GracefulKiller:
         self.killNow = True
 
 
-def getIP(fqdn):
+def scanPort(host, port):
     """
-    This method returns the first IP address string
-    that responds as the given domain name
+    This method returns True if the port listen to request.
     """
-
-    if match(r'^((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\.(?!$)|$)){4}$', fqdn):
-        return fqdn
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(2)
 
     try:
-        data = socket.gethostbyname(fqdn)
-        return repr(data)
+        sock.connect((host, port))
     except socket.error:
         return False
+    finally:
+        sock.close()
+
+    return True
 
 
-def sendMessage(toEmail, message, headAdd=""):
-    msg = EmailMessage()
-    msg['Subject'] = 'OVH - Surveillance des Hôtes' + headAdd
-    msg['From'] = senderEmail
-    msg['To'] = toEmail
-    msg.set_content(message)
+class Email:
+    """cvxcv"""
 
-    with smtplib.SMTP(smtpServer, port) as server:
-        server.ehlo()  # Can be omitted
-        server.starttls()
-        server.ehlo()  # Can be omitted
-        server.login(smtpUsername, smtpPassword)
-        server.send_message(msg)
+    def __init__(self, server, port, username, password, starttls=False):
+        """cvxcv"""
+        pass
 
+    def send(self, subject, sender, to, body,  cc=None, bcc=None):
+        """Permet l'envoi de courriel"""
+        error = False
+        msg = EmailMessage()
+        msg['Subject'] = subject
+        msg['From'] = sender
+        msg['To'] = to
 
-def runPing(killer, addrs, retries=3):
-    return False
+        if cc:
+            msg['Cc'] = cc
+        if bcc:
+            msg['Bcc'] = bcc
+        msg.set_content(body)
+
+        with smtplib.SMTP(server, port) as ssmtp:
+            try:
+                ssmtp.ehlo()  # Can be omitted
+                if starttls is True:
+                    ssmtp.starttls()
+                ssmtp.ehlo()  # Can be omitted
+                ssmtp.login(username, password)
+                ssmtp.send_message(msg)
+            except smtplib.SMTPServerDisconnected:
+                error = True
+
+        return not error
+
+# def ping(killer, addrs, retries=3):
+#     return False
 
 # def runPing(killer, addrs, retries=3):
 #     if retries < 1:
@@ -141,18 +206,37 @@ def parseConfig(filename):
         # Read email options
         if 'email' in config.sections():
             opts['email'] = {}
-            opts['email']['host'] = config.getboolean('email', 'send_email')
+            opts['email']['server'] = config.getboolean('email', 'send_email')
             opts['email']['port'] = config.getint('email', 'port', fallback=25)
-            opts['email']['subject'] = config.get('email', 'send_email', fallback="Pingme email")
-            opts['email']['tls'] = config.getboolean('email', 'tls', fallback=False)
-            opts['email']['server'] = config.get('email', 'server')
+            # opts['email']['subject'] = config.get('email', 'send_email', fallback="Pingme email")
+            opts['email']['starttls'] = config.getboolean('email', 'starttls', fallback=False)
+            opts['email']['server'] = config.get('email', 'server').lower()
             opts['email']['username'] = config.get('email', 'username')
             opts['email']['password'] = config.get('email', 'password')
-            opts['email']['from'] = config.get('email', 'from')
-            opts['email']['to'] = config.get('email', 'to')
+            opts['email']['sender'] = config.get('email', 'from').lower()
+            opts['email']['to'] = config.get('email', 'to').lower()
+            opts['email']['cc'] = config.get('email', 'cc', fallback="").lower()
+            opts['email']['bcc'] = config.get('email', 'bcc', fallback="").lower()
         else:
             opts['email'] = False
 
+        # Read hosts informations
+        opts['hosts'] = []
+        for section in config.sections():
+            if section.lower() in ('email', ):
+                continue
+
+            if not config.getboolean(section, 'active', fallback=True):
+                continue
+
+            opts['hosts'].append({
+                'title': section,
+                'name': config.get(section, 'name', fallback="") or section,
+                'scan_port': config.getboolean(section, 'scan_port', fallback=False),
+                'ping': config.getboolean(section, 'ping', fallback=False),
+                'host': config.get(section, 'host'),
+                'port': config.getint(section, 'port', fallback=80),
+            })
 
     except configparser.Error as e:
         sys.stderr.write(f"Error: {e}\n")
@@ -160,6 +244,8 @@ def parseConfig(filename):
         return False
 
     return opts
+
+
 
 
 def main():
@@ -190,13 +276,6 @@ def main():
     if error:
         sys.exit(1)
 
-
-
-    print(repr(options))
-
-
-    exit()
-
     # sendMessage("myemail@domain", "PingMe service START : " + ", ".join(hosts))
 
     sys.stdout.write(f"Pingme {version} (Press Ctrl+c to stop)...\n")
@@ -211,15 +290,27 @@ def main():
     # cycle = time.time()
 
     # For Ctrl+c signal.
+    first = True
+    unavail = Unavail()
+
     while not killer.killNow:
-        sys.stdout.write("ping\n")
-        sys.stdout.flush()
+        for item in options['hosts']:
+            sys.stdout.write(f"Scan port : {item['host']}:{item['port']}  ")
 
-        # if time.time() - interval > cycle:
-        #     cycle = time.time()
-        #     # runPing(killer, hosts, 4)
+            if scanPort(item['host'], item['port']):
+                sys.stdout.write("[open]\n")
+                unavail.pop(item)
+            else:
+                sys.stdout.write("[close]\n")
+                unavail.push(item)
+            # endif
 
-        time.sleep(1)
+            sys.stdout.flush()
+
+            if first:
+                first = False
+
+        time.sleep(15)
 
     sys.exit(0)
 
@@ -227,6 +318,20 @@ def main():
 if __name__ == '__main__':
     main()
 
+
+# if time.time() - interval > cycle:
+#     cycle = time.time()
+#     # runPing(killer, hosts, 4)
+
+# sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+# sock.settimeout(2)                                      #2 Second Timeout
+# result = sock.connect_ex(('127.0.0.1',80))
+# if result == 0:
+#   print 'port OPEN'
+# else:
+#   print 'port CLOSED, connect_ex returned: '+str(result)
+
+# ***************************************************
 
 # print("[{:%Y-%m-%d %H:%M:%S}] Exit".format(datetime.now()))
     #sendMessage("myemail@domain", "PingMe service STOP : " + ", ".join(hosts))
