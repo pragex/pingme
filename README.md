@@ -1,4 +1,6 @@
 # pingme
+IN CONSTRUCTION
+
 Service qui permet la surveillance d'hôtes. 
 
 ---
