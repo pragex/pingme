@@ -1,5 +1,5 @@
 # pingme
-IN CONSTRUCTION
+NO STABLE / NO COMPLET
 
 Service qui permet la surveillance d'hôtes. 
 
